@@ -5,8 +5,5 @@ fn main() {
     let mut numbers = vec![3, 1, 2];
     for n in numbers.iter_mut() {
         *n += 1;
-        println!("{}", n);
-    }
-    let sum: i32 = numbers.iter().copied().sum();
-    println!("sum={}", sum)
+        println!("{}", n); } let sum: i32 = numbers.iter().copied().sum(); println!("sum={}", sum)
 }
