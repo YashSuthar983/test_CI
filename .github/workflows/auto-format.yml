@@ -1,0 +1,126 @@
+name: Auto-format Rust
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+# Grant permissions needed for committing to PR branches (same-repo PRs)
+# and for commenting on PRs (fork PRs).
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: fmt-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rustfmt:
+    name: Run cargo fmt and auto-commit if needed
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR branch (fork PR)
+        if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.head.repo.fork == true }}
+        uses: actions/checkout@v4
+        with:
+          # For forks, avoid using base repo token to clone
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout PR branch (same-repo PR)
+        if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.head.repo.fork == false }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Rust (stable + rustfmt)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Run cargo fmt (if Cargo.toml present at repo root)
+        id: run_fmt
+        shell: bash
+        run: |
+          if [ -f Cargo.toml ]; then
+            echo "Running cargo fmt --all"
+            cargo fmt --all
+          else
+            echo "No Cargo.toml at repository root. Skipping cargo fmt."
+          fi
+
+      - name: Detect formatting changes
+        id: detect_changes
+        shell: bash
+        run: |
+          CHANGED_COUNT=$(git status --porcelain | wc -l | tr -d ' ')
+          echo "changed_count=$CHANGED_COUNT" >> "$GITHUB_OUTPUT"
+          echo "Detected $CHANGED_COUNT changed files after formatting."
+
+      - name: Auto-commit formatting changes (same-repo PRs only)
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false && steps.detect_changes.outputs.changed_count != '0' }}
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(fmt): apply cargo fmt --all"
+          branch: ${{ github.event.pull_request.head.ref }}
+          file_pattern: "**/*.rs"
+          commit_user_name: github-actions[bot]
+          commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
+
+      - name: Auto-commit formatting changes to fork PR using maintainer PAT (optional)
+        if: ${{ github.event.pull_request.head.repo.fork == true && steps.detect_changes.outputs.changed_count != '0' && (secrets.AUTO_COMMIT_PAT != '' && secrets.AUTO_COMMIT_PAT != null) && github.event_name == 'pull_request_target' }}
+        shell: bash
+        env:
+          PAT: ${{ secrets.AUTO_COMMIT_PAT }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Stage only Rust source files (and rustfmt configs) to avoid unrelated changes
+          shopt -s globstar nullglob
+          git add **/*.rs || true
+          # Optional rustfmt config files if present
+          if [ -f rustfmt.toml ]; then git add rustfmt.toml; fi
+          if [ -f .rustfmt.toml ]; then git add .rustfmt.toml; fi
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(fmt): apply cargo fmt --all"
+          REPO="${{ github.event.pull_request.head.repo.full_name }}"
+          BRANCH="${{ github.event.pull_request.head.ref }}"
+          echo "Pushing to fork ${REPO}:${BRANCH}"
+          git push "https://x-access-token:${PAT}@github.com/${REPO}.git" "HEAD:refs/heads/${BRANCH}"
+
+      - name: Comment: formatting committed to fork PR
+        if: ${{ github.event.pull_request.head.repo.fork == true && steps.detect_changes.outputs.changed_count != '0' && (secrets.AUTO_COMMIT_PAT != '' && secrets.AUTO_COMMIT_PAT != null) && github.event_name == 'pull_request_target' }}
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            Applied formatting changes (cargo fmt --all) and pushed a commit to your PR branch.
+            If you prefer to manage formatting yourself, feel free to amend or revert that commit.
+
+      - name: Comment when formatting is needed but PR is from a fork (no PAT configured)
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true && steps.detect_changes.outputs.changed_count != '0' && (secrets.AUTO_COMMIT_PAT == '' || secrets.AUTO_COMMIT_PAT == null) }}
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            Auto-formatting detected changes, but this PR originates from a fork and the workflow cannot push commits to your branch with the base repo's GITHUB_TOKEN.
+
+            Please run the following locally and push the result to your PR branch:
+            ```bash
+            cargo fmt --all
+            ```
+
+            Alternatively, a maintainer can push formatting changes for you if you enable "Allow edits by maintainers" on this PR. In that case, the workflow can also auto-commit when a maintainer-provided PAT (AUTO_COMMIT_PAT) is configured.

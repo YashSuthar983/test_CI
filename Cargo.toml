@@ -1,0 +1,9 @@
+[package]
+name = "ci-fmt-test"
+version = "0.1.0"
+edition = "2021"
+
+authors = ["Test Repo Maintainers <maintainers@example.com>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
