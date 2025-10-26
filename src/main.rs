@@ -7,6 +7,5 @@ fn main() {
         *n += 1;
         println!("{}", n);
     }
-    let sum: i32 = numbers.iter().copied().sum();
-    println!("sum={}", sum)
+    let sum: i32 = numbers.iter().copied().sum();println!("sum={}", sum)
 }
