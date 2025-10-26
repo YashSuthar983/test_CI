@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   rustfmt:
+    if: ${{ github.event.repository.fork == true }}
     name: Format on push and auto-commit
     runs-on: ubuntu-latest
 
