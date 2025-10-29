@@ -15,37 +15,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  rustfmt:
+  auto_formate_commit:
+    permissions:
+      contents: write
     if: ${{ github.event.repository.fork == true }}
-    name: Format on push and auto-commit
+    name: Auto_formate code
     runs-on: ubuntu-latest
-
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - name: Set up Rust (stable + rustfmt)
+      - name: Setup rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-
       - name: Run cargo fmt (if Cargo.toml present at repo root)
         shell: bash
         run: |
-          if [ -f Cargo.toml ]; then
-            echo "Running cargo fmt --all"
-            cargo fmt --all
-          else
-            echo "No Cargo.toml at repository root. Skipping cargo fmt."
+          echo "Running cargo fmt --all"
+          cargo fmt --all
+      - name: Commit and push if changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "Auto-format code [skip ci]"
+            git push
           fi
-
-      - name: Auto-commit formatting changes
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore(fmt): apply cargo fmt --all"
-          branch: ${{ github.ref_name }}
-          file_pattern: "**/*.rs"
-          commit_user_name: github-actions[bot]
-          commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
