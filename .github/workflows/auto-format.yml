@@ -5,8 +5,6 @@ on:
     branches: ["**"]
   workflow_dispatch:
 
-# Grant permissions needed for committing to PR branches (same-repo PRs)
-# and for commenting on PRs (fork PRs).
 permissions:
   contents: write
 
@@ -15,29 +13,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  auto_formate_commit:
+  auto_format_commit:
+    name: Auto-format code
+    runs-on: ubuntu-latest
+    if: ${{!contains(github.event.head_commit.message, '[skip ci]') }}
     permissions:
       contents: write
-    if: ${{ github.event.repository.fork == true }}
-    name: Auto_formate code
-    runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: Setup rust
+
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Run cargo fmt (if Cargo.toml present at repo root)
-        shell: bash
+
+      - name: Run cargo fmt (if Cargo.toml present)
         run: |
           echo "Running cargo fmt --all"
           cargo fmt --all
+
       - name: Commit and push if changes
-        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
