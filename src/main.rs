@@ -9,5 +9,7 @@ fn main() {
     }
     let sum: i32 = numbers.iter().copied().sum();
     println!("sum={}", sum);
-    println!("sum={}", sum);    println!("sum={}", sum);println!("sum={}", sum);
+    println!("sum={}", sum);
+    println!("sum={}", sum);
+    println!("sum={}", sum);
 }
